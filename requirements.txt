@@ -1,0 +1,5 @@
+paho-mqtt
+imaplib2
+email==6.0.0a1
+datetime
+urllib3
