@@ -10,19 +10,10 @@ ENV MQTT_USER=
 ENV MQTT_PASSWORD= 
 ENV MQTT_CLIENTID=mail_mqtt
 
-ENV MAIL_USER=
-ENV MAIL_PASSWORD=
-ENV MAIL_SERVER=
-ENV MAIL_INTERVAL=60
-ENV MAIL_SEEN=True
-ENV MAIL_DELETE=False
-
-ENV FILTER_SUBJECT=
-ENV FILTER_FROM=
-
 COPY requirements.txt /requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 ADD mail2mqtt.py /
+ADD ./ini/mail2mqtt.ini /ini/
 
 CMD [ "python", "./mail2mqtt.py" ]
