@@ -72,4 +72,6 @@ todo_delete: False
 * ../total: total number of messages in the postbox
 * ../unread: number of unread messages 
 * ../count: number of messages that were filtered 
-* ../found: list of filtered messages as JSON dump
+* ../found: list of filtered messages as JSON dump (including: filtername, from, mail, subject, body, received, sent)
+ 
+(all dates ISO8601 formatted)
