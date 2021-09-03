@@ -55,7 +55,7 @@ filter_postbox: Postbox_B
 filter_from: service@paypal.de|paypal@mail.paypal.de
 todo_delete: False
 ```
-* you can combine three parts *'filter_postbox'*, *'filter_subject'* and *'filter_from'*. If defined the parts AND linked. it it possible to give more than one value per part if you split it with an pipi '|'
+* you can combine three parts *'filter_postbox'*, *'filter_subject'* and *'filter_from'*. If defined the parts AND linked. it it possible to give more than one value per part if you split it with an pipe '|'
 * filter_postbox: allowed are values defined in section 'POSTBOX'
 * filter_subject: the subject of the message
 * filter_from: one or more email-address
