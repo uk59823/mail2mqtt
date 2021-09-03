@@ -8,6 +8,7 @@ import os
 import time
 import datetime
 import paho.mqtt.client as mqtt
+import sys
 
 broker = 'localhost'
 inifile = 'ini/mail2mqtt.ini'
@@ -34,8 +35,14 @@ def readIniValues():
     Settings.read(ReadSettings)
     # existing postboxes
     global interval, setseen
-    interval = int(Settings.get("General", "interval"))
-    setseen = eval(Settings.get("General", "todo_seen"))
+    try:
+        interval = int(Settings.get("General", "interval"))
+    except:
+        interval = 5
+    try:
+        setseen = eval(Settings.get("General", "todo_seen"))
+    except:
+        setseen = True
 
     # existing postboxes
     global postboxes
@@ -79,6 +86,7 @@ def readIniValues():
 
 def checkFilter(pbox, subject, mail):
     res = {}
+    filter = []
     for filter in filters:
         r1 = False
         r2 = False
@@ -123,17 +131,26 @@ def on_connect(client, userdata, flags, rc):
 
 
 def send_mqtt_paho(message, topic):
-    # send MQTT message
-    mqttclient = mqtt.Client(mqtt_clientid)
-    mqttclient.on_connect = on_connect
-    if mqtt_user != "":
-        mqttclient.username_pw_set(mqtt_user, mqtt_pass)
-    mqttclient.connect(mqtt_ipaddress, mqtt_port, 60)
-    mqttclient.loop_start()
-    mqttpub = mqttclient.publish(
-        topic, payload=message, qos=mqtt_qos, retain=mqtt_retain)
-    mqttclient.loop_stop()
-    mqttclient.disconnect()
+    count = 0
+    while count < 5:
+        try:
+            # send MQTT message
+            mqttclient = mqtt.Client(mqtt_clientid)
+            mqttclient.on_connect = on_connect
+            if mqtt_user != "":
+                mqttclient.username_pw_set(mqtt_user, mqtt_pass)
+            mqttclient.connect(mqtt_ipaddress, mqtt_port, 60)
+            mqttclient.loop_start()
+            mqttpub = mqttclient.publish(
+                topic, payload=message, qos=mqtt_qos, retain=mqtt_retain)
+            mqttclient.loop_stop()
+            mqttclient.disconnect()
+            return True
+        except:
+            count += 1
+            time.sleep(1)
+    print("MQTT-Broker not reachable!")
+    return False
 
 
 def decodeElement(element_list):
@@ -151,6 +168,18 @@ def decodeElement(element_list):
     return element
 
 
+def formatISO8601(inDate):
+    month = ['Jan', 'Feb', 'Mar', 'Apr', 'May',
+             'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    inDate = inDate.split(', ')[1]
+    M = '{:02d}'.format(month.index(inDate[3:6]) + 1)
+    d = inDate[7:11] + '-' + M + '-' + inDate[0:2] + 'T' + \
+        inDate[12:14] + ':' + inDate[15:17] + ':' + \
+        inDate[18:20] + inDate[21:24] + ':' + inDate[24:26]
+
+    return d
+
+
 def main():
     # create an IMAP4 class with SSL, use your email provider's IMAP server
 
@@ -158,11 +187,13 @@ def main():
 
     if connect() != True:
         print("[" + dt + "] - No internet connection")
-        send_mqtt_paho('408 Request Timeout (Internet connection)',
-                       mqtt_topic + "/internet_response")
+        if send_mqtt_paho('408 Request Timeout (Internet connection)',
+                          mqtt_topic + "/internet_response") == False:
+            return
         return "[" + dt + "] - Exit Connection"
     else:
-        send_mqtt_paho('200 OK', mqtt_topic + "/internet_response")
+        if send_mqtt_paho('200 OK', mqtt_topic + "/internet_response") == False:
+            return
 
     for postbox in postboxes:
 
@@ -176,7 +207,8 @@ def main():
             imap.login(postbox['username'], postbox['password'])
         except imap.error as e:
             print("[" + dt + "] - " + "Error: " + str(e))
-            send_mqtt_paho(str(e), mqtt_topic + subtopic + "/error")
+            if send_mqtt_paho(str(e), mqtt_topic + subtopic + "/error") == False:
+                return
             return "[" + dt + "] - Exit imap.login"
 
         # select a mailbox (in this case, the inbox mailbox)
@@ -187,10 +219,13 @@ def main():
         # total number of emails
         messages_total = int(messages[0])
 
-        send_mqtt_paho(interval, mqtt_topic + subtopic + "/interval")
-        send_mqtt_paho(messages_total, mqtt_topic + subtopic + "/total")
-        send_mqtt_paho(
-            len(messages_unseen[0].split()), mqtt_topic + subtopic + "/unread")
+        if send_mqtt_paho(interval, mqtt_topic + subtopic + "/interval") == False:
+            return
+        if send_mqtt_paho(messages_total, mqtt_topic + subtopic + "/total") == False:
+            return
+        if send_mqtt_paho(
+                len(messages_unseen[0].split()), mqtt_topic + subtopic + "/unread") == False:
+            return
 
         for i in messages_unseen[0].split():
             # fetch the email message by ID
@@ -268,25 +303,27 @@ def main():
                         paho['mail'] = mail
                         paho['subject'] = subject
                         paho['body'] = body
-                        paho['sent'] = sent
-                        paho['received'] = received
+                        paho['sent'] = formatISO8601(sent)
+                        paho['received'] = formatISO8601(received)
 
                         sum.append(paho)
-
         if sum == []:
             count = 0
         else:
             count = len(sum)
             print(dt + " - gefilterte Mail von '" +
                   postbox['postboxname'] + "': " + str(count))
-        send_mqtt_paho(count, mqtt_topic + subtopic + "/count")
-        send_mqtt_paho(json.dumps(sum), mqtt_topic + subtopic + "/found")
+        if send_mqtt_paho(count, mqtt_topic + subtopic + "/count") == False:
+            return
+        if send_mqtt_paho(json.dumps(sum), mqtt_topic + subtopic + "/found") == False:
+            return
 
         # close the connection and logout
         imap.close()
         imap.logout()
 
-    send_mqtt_paho(dt, mqtt_topic + "/update")
+    if send_mqtt_paho(dt, mqtt_topic + "/update") == False:
+        return
     return "[" + dt + "] - Search ended"
 
 
@@ -298,7 +335,8 @@ if __name__ == '__main__':
 
         dtStart = datetime.datetime.now()
         r = main()
-        print(r)
+        if r != None:
+            print(r)
         dtEnd = datetime.datetime.now()
         sleeptime = (60 * interval) - (dtEnd - dtStart).total_seconds()
         if sleeptime < 0:
