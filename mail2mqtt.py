@@ -169,15 +169,20 @@ def decodeElement(element_list):
 
 
 def formatISO8601(inDate):
+    #    return datetime.datetime(imaplib.Internaldate2tuple(inDate)).isoformat()
     month = ['Jan', 'Feb', 'Mar', 'Apr', 'May',
              'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     inDate = inDate.split(', ')[1]
-    M = '{:02d}'.format(month.index(inDate[3:6]) + 1)
-    d = inDate[7:11] + '-' + M + '-' + inDate[0:2] + 'T' + \
-        inDate[12:14] + ':' + inDate[15:17] + ':' + \
-        inDate[18:20] + inDate[21:24] + ':' + inDate[24:26]
-
-    return d
+    d = '{:02d}'.format(int(inDate.split(' ')[0]))
+    M = '{:02d}'.format(month.index(inDate.split(' ')[1]) + 1)
+    y = inDate.split(' ')[2]
+    t = inDate.split(' ')[3]
+    if len(inDate.split(' ')[4]) == 5:
+        z = inDate.split(' ')[4][:3] + ':' + inDate.split(' ')[4][3:]
+    else:
+        z = '+' + inDate.split(' ')[4][:2] + ':' + inDate.split(' ')[4][2:]
+    ISO8601 = y + '-' + M + '-' + d + 'T' + t + z
+    return ISO8601
 
 
 def main():
