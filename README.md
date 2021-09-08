@@ -5,7 +5,7 @@ Check the mailbox according to criteria and send to MQTT
 The script searches the unread messages in the INBOX of one or meore mailboxes defined in an ini-file. In intervals according to defined criteria the script sends the messages found via MQTT.
 The script is intended for use in a Docker container, so that the Docker environment variables are used to control the mqtt-part, the part to control the mailboxes are defined in the ini-file also the defined filter.
 
-The docker container you can find [here](https://hub.docker.com/repository/docker/ukrae/mail2mqtt "mail2mqtt on docker").
+The docker container you can find [here](https://hub.docker.com/r/ukrae/mail2mqtt "mail2mqtt on docker").
 
 ## docker environment variables
 * MQTT_BROKER: IP-Address (or FQN) of your MQTT Broker (*default: 'localhost'*)
