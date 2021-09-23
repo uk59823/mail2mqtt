@@ -10,8 +10,8 @@ import datetime
 import paho.mqtt.client as mqtt
 import sys
 
-broker = '192.168.2.167'
-inifile = 'ini/_uk_mail2mqtt.ini'
+broker = 'localhost'
+inifile = 'ini/mail2mqtt.ini'
 
 # MQTT-Settings
 mqtt_ipaddress = os.getenv('MQTT_BROKER', broker)
