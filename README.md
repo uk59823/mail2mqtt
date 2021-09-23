@@ -18,7 +18,7 @@ The docker image you can find [here](https://hub.docker.com/r/ukrae/mail2mqtt "m
 * MQTT_CLIENTID: ClientID for the broker to avoid parallel connections (*default: 'mail_mqtt'*)
 
 ## mail2mqtt.ini
-The file is stored in the subdirectory 'ini' 
+The file is stored in the subdirectory 'ini' and it is UTF-8 coded.
 ```
 [General]
 interval: 5
