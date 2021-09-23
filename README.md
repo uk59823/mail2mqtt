@@ -53,13 +53,14 @@ todo_delete: False
 [INFO_Paypal]
 filter_postbox: Postbox_B
 filter_from: service@paypal.de|paypal@mail.paypal.de
-todo_delete: False
+todo_move: INBOX.Archives
 ```
 * you can combine three parts *'filter_postbox'*, *'filter_subject'* and *'filter_from'*. If defined the parts AND linked. it it possible to give more than one value per part if you split it with an pipe '|'
 * filter_postbox: allowed are values defined in section 'POSTBOX'
-* filter_subject: the subject of the message
+* filter_subject: part of the subject of the message
 * filter_from: one or more email-address
 * todo_delete: switch, boolean (if True) to delete the message after filtering (*default: False*)
+* todo_move: Folder to which the message will be moved (f.e. 'INBOX.Archives'). The folder must exist. 
 
 ## output on your mqtt broker
     MQTT_TOPIC/update
