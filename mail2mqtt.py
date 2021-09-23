@@ -10,8 +10,8 @@ import datetime
 import paho.mqtt.client as mqtt
 import sys
 
-broker = 'localhost'
-inifile = 'ini/mail2mqtt.ini'
+broker = '192.168.2.167'
+inifile = 'ini/_uk_mail2mqtt.ini'
 
 # MQTT-Settings
 mqtt_ipaddress = os.getenv('MQTT_BROKER', broker)
@@ -32,7 +32,7 @@ def readIniValues():
     ApplicationDir = os.path.dirname(os.path.abspath(__file__))
     ReadSettings = os.path.join(ApplicationDir, inifile)
     Settings = configparser.ConfigParser()
-    Settings.read(ReadSettings)
+    Settings.read(ReadSettings, 'UTF-8')
     # existing postboxes
     global interval, setseen
     try:
@@ -81,6 +81,10 @@ def readIniValues():
                 Settings.get(str(id[1]), "todo_delete"))
         except:
             idfilter['setdelete'] = False
+        try:
+            idfilter['moveto'] = Settings.get(str(id[1]), "todo_move")
+        except:
+            idfilter['moveto'] = ''
         filters.append(idfilter)
 
 
@@ -169,7 +173,9 @@ def decodeElement(element_list):
 
 
 def formatISO8601(inDate):
+
     #    return datetime.datetime(imaplib.Internaldate2tuple(inDate)).isoformat()
+
     month = ['Jan', 'Feb', 'Mar', 'Apr', 'May',
              'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     inDate = inDate.split(', ')[1]
@@ -231,87 +237,100 @@ def main():
         if send_mqtt_paho(
                 len(messages_unseen[0].split()), mqtt_topic + subtopic + "/unread") == False:
             return
+        if send_mqtt_paho(dt, mqtt_topic + "/update") == False:
+            return
 
         for i in messages_unseen[0].split():
-            # fetch the email message by ID
-            res, msg = imap.fetch(i, "BODY.PEEK[]")
-            for response in msg:
-                if isinstance(response, tuple):
 
-                    subject = ""
-                    From = ""
-                    mail = ""
-                    body = None
+            try:
+                # fetch the email message by ID
+                res, msg = imap.fetch(i, "BODY.PEEK[]")
+                for response in msg:
+                    if isinstance(response, tuple):
 
-                    # parse a bytes email into a message object
-                    msg = email.message_from_bytes(response[1])
+                        subject = ""
+                        From = ""
+                        mail = ""
+                        body = None
+                        toFolder = ""
 
-                    # decode the email subject
-                    subject_list = decode_header(msg['subject'])
-                    subject = decodeElement(subject_list)
+                        # parse a bytes email into a message object
+                        msg = email.message_from_bytes(response[1])
 
-                    # decode email-From sender
-                    from_list = decode_header(msg.get("From"))
-                    From = decodeElement(from_list)
+                        # decode the email subject
+                        subject_list = decode_header(msg['subject'])
+                        subject = decodeElement(subject_list)
 
-                    # decode email-Address sender
-                    mail_list = decode_header(msg.get("Return-Path"))
-                    mail = decodeElement(mail_list)
-                    mail = mail.replace('<', '').replace('>', '')
+                        # decode email-From sender
+                        from_list = decode_header(msg.get("From"))
+                        From = decodeElement(from_list)
 
-                    # decode the email send date
-                    sent = decode_header(msg["Date"])[0][0]
+                        # decode email-Address sender
+                        mail_list = decode_header(msg.get("Return-Path"))
+                        mail = decodeElement(mail_list)
+                        mail = mail.replace('<', '').replace('>', '')
 
-                    # decode the email receive date
-                    received = decode_header(msg['Received'])[
-                        0][0].split('; ')[1]
+                        # decode the email send date
+                        sent = decode_header(msg["Date"])[0][0]
 
-                    filter = checkFilter(postbox['postboxname'], subject, mail)
+                        # decode the email receive date
+                        received = decode_header(msg['Received'])[
+                            0][0].split('; ')[1]
 
-                    if filter != {}:
+                        filter = checkFilter(
+                            postbox['postboxname'], subject, mail)
 
-                        # if the email message is multipart
-                        if msg.is_multipart():
+                        if filter != {}:
 
-                            # iterate over email parts
-                            for part in msg.walk():
-                                # extract content type of email
-                                content_type = part.get_content_type()
-                                content_disposition = str(
-                                    part.get("Content-Disposition"))
-                                try:
-                                    # get the email body
-                                    if body != None:
-                                        body = body + '\n\n' + \
-                                            part.get_payload(
+                            # if the email message is multipart
+                            if msg.is_multipart():
+
+                                # iterate over email parts
+                                for part in msg.walk():
+                                    try:
+                                        # get the email body
+                                        if body != None:
+                                            body = body + '\n\n' + \
+                                                part.get_payload(
+                                                    decode=True).decode()
+                                        else:
+                                            body = part.get_payload(
                                                 decode=True).decode()
-                                    else:
-                                        body = part.get_payload(
-                                            decode=True).decode()
-                                except:
-                                    pass
-                        else:
+                                    except:
+                                        pass
+                            else:
+                                body = msg.get_payload(decode=True).decode()
 
-                            # extract content type of email
-                            content_type = msg.get_content_type()
-                            # get the email body
-                            body = msg.get_payload(decode=True).decode()
+                            if setseen == True:
+                                imap.store(i, '+FLAGS', '\Seen')
 
-                        if setseen == True:
-                            imap.store(i, '+FLAGS', '\Seen')
-                        if filter['setdelete'] == True:
-                            imap.store(mail, "+FLAGS", "\Deleted")
+                            if filter['setdelete'] == True:
+                                toFolder = "INBOX.Trash"
+                            elif filter['moveto'] != "":
+                                toFolder = filter['moveto']
+                            else:
+                                toFolder = ""
+                            if toFolder != "":
+                                apply_msg = imap.copy(i, toFolder)
+                                if apply_msg[0] == 'OK':
+                                    imap.store(i, '+FLAGS', '\Deleted')
+                                    imap.expunge()
 
-                        paho = {}
-                        paho['filter'] = filter['filtername']
-                        paho['from'] = From
-                        paho['mail'] = mail
-                        paho['subject'] = subject
-                        paho['body'] = body
-                        paho['sent'] = formatISO8601(sent)
-                        paho['received'] = formatISO8601(received)
+                            paho = {}
+                            paho['filter'] = filter['filtername']
+                            paho['from'] = From
+                            paho['mail'] = mail
+                            paho['subject'] = subject
+                            paho['body'] = body
+                            paho['sent'] = formatISO8601(sent)
+                            paho['received'] = formatISO8601(received)
 
-                        sum.append(paho)
+                            sum.append(paho)
+            except imap.error as e:
+                print("[" + dt + "] - " + "Error: " + str(e))
+                if send_mqtt_paho(str(e), mqtt_topic + subtopic + "/error") == False:
+                    return
+
         if sum == []:
             count = 0
         else:
