@@ -1,5 +1,5 @@
 # mail2mqtt
-Check the mailbox according to criteria and send to MQTT
+Check the mailbox according to criteria and send to MQTT additional you can delete or move to another folder or send the filtered email
 
 ## functionality
 The script searches the unread messages in the INBOX of one or meore mailboxes defined in an ini-file. In intervals according to defined criteria the script sends the messages found via MQTT.
@@ -18,14 +18,15 @@ The docker image you can find [here](https://hub.docker.com/r/ukrae/mail2mqtt "m
 * MQTT_CLIENTID: ClientID for the broker to avoid parallel connections (*default: 'mail_mqtt'*)
 
 ## mail2mqtt.ini
-The file is stored in the subdirectory 'ini' and it is UTF-8 coded.
+The file is stored in the subdirectory 'ini' and it is UTF-8 coded. 
+Since TAG 0.8 there are changes for some ini-Parameter
 ```
 [General]
 interval: 5
-todo_seen: True
+do_seen: True
 ```
 * interval: defines the interval in minutes between the search (*default: 5*)
-* todo_seen: switch, boolean (if True) to set the message 'SEEN' after filtering (*default: True*)
+* do_seen: switch, boolean (if True) to set the message 'SEEN' after filtering (*default: True*)
 ```
 [POSTBOX]
 1: Postbox_A
@@ -36,31 +37,44 @@ todo_seen: True
 [Postbox_A]
 username: 
 password: 
-server: 
+imapserver:
+smtpserver:
+smtpport:
 ```
 * one section for each mailbox
+* smtpserver and smtpport only used for use command *do_sendTo* (username and password also user for imapserver and smtpserver)
 ```
 [FILTER]
 1: MissedCall
 2: INFO_Paypal
+3: SENDTO
 ```
 * section to define the filters, here defined two filter see below
 ```
 [MissedCall]
+filter_postbox: Postbox_A
 filter_subject: Ein verpasster Anruf liegt vor
-todo_delete: False
+do_delete: True
 
 [INFO_Paypal]
 filter_postbox: Postbox_B
 filter_from: service@paypal.de|paypal@mail.paypal.de
-todo_move: INBOX.Archives
+do_moveTo: INBOX.Archives
+
+[SENDTO]
+filter_postbox: Postbox_B
+filter_subject: Terminvorschlag
+do_sendTo: abc@def.com
+do_moveTo: INBOX.Archives
 ```
 * you can combine three parts *'filter_postbox'*, *'filter_subject'* and *'filter_from'*. If defined the parts AND linked. it it possible to give more than one value per part if you split it with an pipe '|'
 * filter_postbox: allowed are values defined in section 'POSTBOX'
 * filter_subject: part of the subject of the message
 * filter_from: one or more email-address
-* todo_delete: switch, boolean (if True) to delete the message after filtering (*default: False*)
-* todo_move: Folder to which the message will be moved (f.e. 'INBOX.Archives'). The folder must exist. 
+* do_delete: switch, boolean (if True) to delete the message after filtering (*default: False*)
+* do_moveTo: Folder to which the message will be moved (f.e. 'INBOX.Archives'). The folder must exist. 
+* do_sendTo: send the filtered message to the specified email-address
+* it is allowed to combine *do_sendTo* with *do_moveTo* or *do_delete*
 
 ## output on your mqtt broker
     MQTT_TOPIC/update
