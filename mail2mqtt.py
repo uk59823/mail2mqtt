@@ -1,4 +1,5 @@
 import imaplib
+import smtplib
 import email
 import configparser
 import json
@@ -40,7 +41,7 @@ def readIniValues():
     except:
         interval = 5
     try:
-        setseen = eval(Settings.get("General", "todo_seen"))
+        setseen = eval(Settings.get("General", "do_seen"))
     except:
         setseen = True
 
@@ -53,7 +54,16 @@ def readIniValues():
         postbox['postboxname'] = str(id[1])
         postbox['username'] = Settings.get(str(id[1]), "username")
         postbox['password'] = Settings.get(str(id[1]), "password")
-        postbox['imapserver'] = Settings.get(str(id[1]), "server")
+        postbox['imapserver'] = Settings.get(str(id[1]), "imapserver")
+        try:
+            postbox['smtpserver'] = Settings.get(str(id[1]), "smtpserver")
+        except:
+            postbox['smtpserver'] = ""
+        try:
+            postbox['smtpport'] = int(Settings.get(str(id[1]), "smtpport"))
+        except:
+            postbox['smtpport'] = int(25)
+
         postboxes.append(postbox)
 
     # existing filters
@@ -77,18 +87,23 @@ def readIniValues():
         except:
             idfilter['filterFrom'] = ''
         try:
-            idfilter['setdelete'] = eval(
-                Settings.get(str(id[1]), "todo_delete"))
+            idfilter['delete'] = eval(
+                Settings.get(str(id[1]), "do_delete"))
         except:
-            idfilter['setdelete'] = False
+            idfilter['delete'] = False
         try:
-            idfilter['moveto'] = Settings.get(str(id[1]), "todo_move")
+            idfilter['moveTo'] = Settings.get(str(id[1]), "do_moveTo")
         except:
-            idfilter['moveto'] = ''
+            idfilter['moveTo'] = ''
+        try:
+            idfilter['sendTo'] = Settings.get(
+                str(id[1]), "do_sendTo")
+        except:
+            idfilter['sendTo'] = ''
         filters.append(idfilter)
 
 
-def checkFilter(pbox, subject, mail):
+def checkFilter(pbox, subject, From):
     res = {}
     filter = []
     for filter in filters:
@@ -109,7 +124,7 @@ def checkFilter(pbox, subject, mail):
             r2 = True
         if (filter['filterFrom'] != ''):
             for s in filter['filterFrom'].lower().split('|'):
-                if s in mail.lower():
+                if s in From.lower():
                     r3 = True
         else:
             r3 = True
@@ -215,7 +230,8 @@ def main():
             # authenticate
             imap.login(postbox['username'], postbox['password'])
         except imap.error as e:
-            print("[" + dt + "] - " + "Error: " + str(e))
+            print("[" + dt + "] - " + postbox['postboxname'] +
+                  " - Error: " + str(e))
             if send_mqtt_paho(str(e), mqtt_topic + subtopic + "/error") == False:
                 return
             return "[" + dt + "] - Exit imap.login"
@@ -240,6 +256,7 @@ def main():
         for i in messages_unseen[0].split():
 
             try:
+                #                res, msg = imap.fetch(i, "(BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT FLAGS)])")
                 res, msg = imap.fetch(
                     i, "(BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT)])")
             except imap.error as e:
@@ -274,10 +291,9 @@ def main():
                     try:
                         mail_list = decode_header(msg['to'])
                         mail = decodeElement(mail_list)
-#                        mail = mail.replace('<', '').replace('>', '')
                     except:
-                        mail = ""
-                        print("[" + dt + "] - Fehler, kein To-Attribut im Message von: '" +
+                        mail = "<NONE>"
+                        print("[" + dt + "] - " + postbox['postboxname'] + " - Fehler, kein To-Attribut im Message von: '" +
                               From + "' -> '" + subject + "'")
 
                     # decode the email send date
@@ -285,11 +301,11 @@ def main():
                         sent = decode_header(msg['Date'])[0][0]
                     except:
                         sent = ""
-                        print("[" + dt + "] - Fehler, kein Date-Attribut im Message von: '" +
+                        print("[" + dt + "] - " + postbox['postboxname'] + " - Fehler, kein Date-Attribut im Message von: '" +
                               From + "' -> '" + subject + "'")
 
                     filter = checkFilter(
-                        postbox['postboxname'], subject, mail)
+                        postbox['postboxname'], subject, From)
 
                     if filter != {}:
                         try:
@@ -339,12 +355,35 @@ def main():
                                 if setseen == True:
                                     imap.store(i, '+FLAGS', '\Seen')
 
-                                if filter['setdelete'] == True:
+                                if filter['sendTo'] != "":
+                                    to_addr = filter['sendTo']
+
+                                    msgTransfer = msg
+
+                                    # replace headers (could do other processing here)
+                                    msgTransfer.replace_header(
+                                        "From", postbox['username'])
+                                    msgTransfer.replace_header("To", to_addr)
+
+                                    # open authenticated SMTP connection and send message with
+                                    # specified envelope from and to addresses
+                                    smtp = smtplib.SMTP(
+                                        postbox['smtpserver'], postbox['smtpport'])
+
+                                    smtp.starttls()
+                                    smtp.login(
+                                        postbox['username'], postbox['password'])
+                                    smtp.sendmail(
+                                        postbox['username'], to_addr, msgTransfer.as_string())
+                                    smtp.quit()
+
+                                if filter['delete'] == True:
                                     toFolder = "INBOX.Trash"
-                                elif filter['moveto'] != "":
-                                    toFolder = filter['moveto']
+                                elif filter['moveTo'] != "":
+                                    toFolder = filter['moveTo']
                                 else:
                                     toFolder = ""
+
                                 if toFolder != "":
                                     apply_msg = imap.copy(i, toFolder)
                                     if apply_msg[0] == 'OK':
@@ -362,10 +401,8 @@ def main():
 
                                 sum.append(paho)
 
-        if sum == []:
-            count = 0
-        else:
-            count = len(sum)
+        count = len(sum)
+        if sum != []:
             print("[" + dt + "] - gefilterte Mail von '" +
                   postbox['postboxname'] + "': " + str(count))
         if send_mqtt_paho(count, mqtt_topic + subtopic + "/count") == False:
@@ -376,6 +413,7 @@ def main():
         # close the connection and logout
         imap.close()
         imap.logout()
+        send_mqtt_paho('', mqtt_topic + subtopic + "/error")
 
     if send_mqtt_paho(dt, mqtt_topic + "/update") == False:
         return
