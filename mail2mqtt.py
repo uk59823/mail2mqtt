@@ -4,11 +4,15 @@ import email
 import configparser
 import json
 from email.header import decode_header
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.message import MIMEMessage
 import urllib.request
 import os
 import time
 import datetime
 import paho.mqtt.client as mqtt
+import cgi
 import sys
 
 broker = 'localhost'
@@ -87,19 +91,25 @@ def readIniValues():
         except:
             idfilter['filterFrom'] = ''
         try:
-            idfilter['delete'] = eval(
-                Settings.get(str(id[1]), "do_delete"))
-        except:
-            idfilter['delete'] = False
-        try:
             idfilter['moveTo'] = Settings.get(str(id[1]), "do_moveTo")
         except:
             idfilter['moveTo'] = ''
+        if idfilter['moveTo'] == '':
+            try:
+                if eval(Settings.get(str(id[1]), "do_delete")) == True:
+                    idfilter['moveTo'] = "INBOX.Trash"
+            except:
+                idfilter['moveTo'] = ''
         try:
             idfilter['sendTo'] = Settings.get(
                 str(id[1]), "do_sendTo")
         except:
             idfilter['sendTo'] = ''
+        try:
+            idfilter['forward'] = eval(Settings.get(
+                str(id[1]), "do_forward"))
+        except:
+            idfilter['forward'] = True
         filters.append(idfilter)
 
 
@@ -132,6 +142,46 @@ def checkFilter(pbox, subject, From):
         if (r1 and r2 and r3):
             res = filter
     return res
+
+
+def forwardPreText(msg):
+    cRow = '\r\n<TR><TH valign="BASELINE" nowrap="nowrap" align="RIGHT">{name}</TH><TD>{value}</TD></TR>'
+    info = {}
+    if msg['subject'] != None:
+        tRow = cRow
+        info['subject'] = tRow.replace("{name}", "Betreff:").replace(
+            "{value}", cgi.html.escape(decodeElement(decode_header(msg['subject']))))
+    if msg['Date'] != None:
+        tRow = cRow
+        info['date'] = tRow.replace("{name}", "Datum:").replace(
+            "{value}", cgi.html.escape(decodeElement(decode_header(msg['Date']))))
+    if msg['From'] != None:
+        tRow = cRow
+        info['from'] = tRow.replace("{name}", "Von:").replace(
+            "{value}", cgi.html.escape(decodeElement(decode_header(msg['From']))))
+
+    if msg['to'] != None:
+        tRow = cRow
+        info['to'] = tRow.replace("{name}", "An:").replace(
+            "{value}", cgi.html.escape(decodeElement(decode_header(msg['to']))))
+    if msg['Reply-To'] == None:
+        info['reply-to'] = ""
+    else:
+        tRow = cRow
+        info['reply-to'] = tRow.replace("{name}", "Antwort an:").replace(
+            "{value}", cgi.html.escape(decodeElement(decode_header(msg['Reply-To']))))
+    if msg['Organization'] == None:
+        info['organization'] = ""
+    else:
+        tRow = cRow
+        info['organization'] = tRow.replace("{name}", "Organisation:").replace(
+            "{value}", cgi.html.escape(decodeElement(decode_header(msg['Organization']))))
+
+    preText = '----- Weitergeleitete Nachricht -----' + '\r\n<TABLE>' + \
+        info['subject'] + info['date'] + info['from'] + info['reply-to'] + \
+        info['organization'] + info['to'] + '\r\n</TABLE>'
+
+    return preText
 
 
 def connect():
@@ -261,8 +311,8 @@ def main():
                     i, "(BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT)])")
             except imap.error as e:
                 print("[" + dt + "] - " + postbox['postboxname'] +
-                      " - Error Fetch: " + str(e))
-                if send_mqtt_paho(postbox['postboxname'] + " - Error Fetch: " + str(e), mqtt_topic + subtopic + "/error") == False:
+                      " - Error Fetch (BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT)]): " + str(e))
+                if send_mqtt_paho(postbox['postboxname'] + " - Error Fetch (BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT)]): " + str(e), mqtt_topic + subtopic + "/error") == False:
                     return
                 continue
 
@@ -314,8 +364,8 @@ def main():
                                 i, "(BODY.PEEK[])")
                         except imap.error as e:
                             print("[" + dt + "] - " + postbox['postboxname'] +
-                                  " - Error Fetch: " + str(e))
-                            if send_mqtt_paho(postbox['postboxname'] + " - Error Fetch: " + str(e), mqtt_topic + subtopic + "/error") == False:
+                                  " - Error Fetch (BODY.PEEK[]): " + str(e))
+                            if send_mqtt_paho(postbox['postboxname'] + " - Error Fetch (BODY.PEEK[]): " + str(e), mqtt_topic + subtopic + "/error") == False:
                                 return
                             continue
 
@@ -358,12 +408,35 @@ def main():
                                 if filter['sendTo'] != "":
                                     to_addr = filter['sendTo']
 
-                                    msgTransfer = msg
+                                    if filter['forward'] != True:
+                                        # create a Message instance from the email data
+                                        msgTransfer = msg
+                                        # replace headers (could do other processing here)
+                                        msgTransfer.replace_header(
+                                            "From", postbox['username'])
+                                        msgTransfer.replace_header(
+                                            "To", to_addr)
+                                    else:
 
-                                    # replace headers (could do other processing here)
-                                    msgTransfer.replace_header(
-                                        "From", postbox['username'])
-                                    msgTransfer.replace_header("To", to_addr)
+                                        # create a Message instance from the email data
+                                        msgTransfer = MIMEMultipart(
+                                            "mixed")
+                                        msgTransfer.add_header(
+                                            "From", postbox['username'])
+                                        msgTransfer.add_header(
+                                            "To", to_addr)
+                                        msgTransfer.add_header(
+                                            "subject", "WG: " + subject)
+
+                                        # Turn these into plain/html MIMEText objects
+                                        part1 = MIMEText(
+                                            forwardPreText(msg), "html", "utf-8")
+                                        part2 = MIMEMessage(msg)
+
+                                        # Add HTML/plain-text parts to MIMEMultipart message
+                                        # The email client will try to render the last part first
+                                        msgTransfer.attach(part1)
+                                        msgTransfer.attach(part2)
 
                                     # open authenticated SMTP connection and send message with
                                     # specified envelope from and to addresses
@@ -373,22 +446,17 @@ def main():
                                     smtp.starttls()
                                     smtp.login(
                                         postbox['username'], postbox['password'])
-                                    smtp.sendmail(
-                                        postbox['username'], to_addr, msgTransfer.as_string())
+
+                                    smtp.send_message(
+                                        msgTransfer, postbox['username'], to_addr)
+
                                     smtp.quit()
 
-                                if filter['delete'] == True:
-                                    toFolder = "INBOX.Trash"
-                                elif filter['moveTo'] != "":
-                                    toFolder = filter['moveTo']
-                                else:
-                                    toFolder = ""
-
-                                if toFolder != "":
-                                    apply_msg = imap.copy(i, toFolder)
+                                if filter['moveTo'] != "":
+                                    apply_msg = imap.copy(i, filter['moveTo'])
                                     if apply_msg[0] == 'OK':
                                         imap.store(i, '+FLAGS', '\Deleted')
-                                        imap.expunge()
+#                                        imap.expunge()
 
                                 paho = {}
                                 paho['filter'] = filter['filtername']
@@ -400,6 +468,8 @@ def main():
                                 paho['received'] = formatISO8601(received)
 
                                 sum.append(paho)
+
+        imap.expunge()
 
         count = len(sum)
         if sum != []:
