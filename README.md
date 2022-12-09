@@ -74,6 +74,7 @@ do_moveTo: INBOX.Archives
 * do_delete: switch, boolean (if True) to delete the message after filtering (*default: False*)
 * do_moveTo: Folder to which the message will be moved (f.e. 'INBOX.Archives'). The folder must exist. 
 * do_sendTo: send the filtered message to the specified email-address
+* do_forward: switch, boolean (if True) to add an forward-message-part to the message (*default: True*)
 * it is allowed to combine *'do_sendTo'* with *'do_moveTo'* or *'do_delete'*
 
 ## output on your mqtt broker
