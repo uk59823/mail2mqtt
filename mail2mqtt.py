@@ -428,14 +428,13 @@ def main():
                                         msgTransfer.add_header(
                                             "subject", "WG: " + subject)
 
-                                        # Turn these into plain/html MIMEText objects
-                                        part1 = MIMEText(
-                                            forwardPreText(msg), "html", "utf-8")
-                                        part2 = MIMEMessage(msg)
+                                        if filter['forward'] == True:
+                                            # Turn these into plain/html MIMEText objects
+                                            part1 = MIMEText(
+                                                forwardPreText(msg), "html", "utf-8")
+                                            msgTransfer.attach(part1)
 
-                                        # Add HTML/plain-text parts to MIMEMultipart message
-                                        # The email client will try to render the last part first
-                                        msgTransfer.attach(part1)
+                                        part2 = MIMEMessage(msg)
                                         msgTransfer.attach(part2)
 
                                     # open authenticated SMTP connection and send message with
