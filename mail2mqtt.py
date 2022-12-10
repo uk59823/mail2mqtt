@@ -12,6 +12,7 @@ import os
 import time
 import datetime
 import paho.mqtt.client as mqtt
+import fnmatch
 import cgi
 import sys
 
@@ -110,34 +111,38 @@ def readIniValues():
                 str(id[1]), "do_forward"))
         except:
             idfilter['forward'] = True
+        try:
+            idfilter['seen'] = eval(Settings.get(
+                str(id[1]), "do_seen"))
+        except:
+            idfilter['seen'] = None
+        try:
+            idfilter['mqtt'] = eval(Settings.get(
+                str(id[1]), "do_mqtt"))
+        except:
+            idfilter['mqtt'] = True
         filters.append(idfilter)
+
+
+def checkIsPartOf(toCheck, pattern):
+    res = False
+    if (toCheck != ''):
+        for s in pattern.lower().split('|'):
+            if fnmatch.fnmatch(toCheck.lower(), s) == True:
+                res = True
+    else:
+        res = True
+    return res
 
 
 def checkFilter(pbox, subject, From):
     res = {}
     filter = []
     for filter in filters:
-        r1 = False
-        r2 = False
-        r3 = False
-        if (filter['filterPostbox'] != ''):
-            for s in filter['filterPostbox'].lower().split('|'):
-                if s in pbox.lower():
-                    r1 = True
-        else:
-            r1 = True
-        if (filter['filterSubject'] != ''):
-            for s in filter['filterSubject'].lower().split('|'):
-                if (s in subject.lower()):
-                    r2 = True
-        else:
-            r2 = True
-        if (filter['filterFrom'] != ''):
-            for s in filter['filterFrom'].lower().split('|'):
-                if s in From.lower():
-                    r3 = True
-        else:
-            r3 = True
+
+        r1 = checkIsPartOf(pbox, filter['filterPostbox'])
+        r2 = checkIsPartOf(subject, filter['filterSubject'])
+        r3 = checkIsPartOf(From, filter['filterFrom'])
 
         if (r1 and r2 and r3):
             res = filter
@@ -272,6 +277,7 @@ def main():
     for postbox in postboxes:
 
         sum = []
+        totalCount = 0
 
         subtopic = "/" + postbox['postboxname']
         imap = imaplib.IMAP4_SSL(postbox['imapserver'])
@@ -354,6 +360,8 @@ def main():
                         print("[" + dt + "] - " + postbox['postboxname'] + " - Fehler, kein Date-Attribut im Message von: '" +
                               From + "' -> '" + subject + "'")
 
+                    filter = {}
+
                     filter = checkFilter(
                         postbox['postboxname'], subject, From)
 
@@ -401,8 +409,10 @@ def main():
                                 else:
                                     body = msg.get_payload(
                                         decode=True).decode()
-
-                                if setseen == True:
+                                if filter['seen'] == None:
+                                    if setseen == True:
+                                        imap.store(i, '+FLAGS', '\Seen')
+                                elif filter['seen'] == True:
                                     imap.store(i, '+FLAGS', '\Seen')
 
                                 if filter['sendTo'] != "":
@@ -455,25 +465,29 @@ def main():
                                     apply_msg = imap.copy(i, filter['moveTo'])
                                     if apply_msg[0] == 'OK':
                                         imap.store(i, '+FLAGS', '\Deleted')
-#                                        imap.expunge()
+                                if filter['mqtt'] == True:
+                                    paho = {}
+                                    paho['filter'] = filter['filtername']
+                                    paho['from'] = From
+                                    paho['mail'] = mail
+                                    paho['subject'] = subject
+                                    paho['body'] = body
+                                    paho['sent'] = formatISO8601(sent)
+                                    paho['received'] = formatISO8601(received)
 
-                                paho = {}
-                                paho['filter'] = filter['filtername']
-                                paho['from'] = From
-                                paho['mail'] = mail
-                                paho['subject'] = subject
-                                paho['body'] = body
-                                paho['sent'] = formatISO8601(sent)
-                                paho['received'] = formatISO8601(received)
+                                    sum.append(paho)
 
-                                sum.append(paho)
+                                totalCount = totalCount + 1
 
         imap.expunge()
 
         count = len(sum)
+        print("[" + dt + "] - gefilterte Mail von '" +
+              postbox['postboxname'] + " (alle)': " + str(totalCount))
+
         if sum != []:
             print("[" + dt + "] - gefilterte Mail von '" +
-                  postbox['postboxname'] + "': " + str(count))
+                  postbox['postboxname'] + " (MQTT)': " + str(count))
         if send_mqtt_paho(count, mqtt_topic + subtopic + "/count") == False:
             return
         if send_mqtt_paho(json.dumps(sum), mqtt_topic + subtopic + "/found") == False:
