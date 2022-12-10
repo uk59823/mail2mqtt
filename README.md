@@ -2,8 +2,11 @@
 Check the mailbox according to criteria and send to MQTT additional you can delete or move to another folder or send the filtered email
 
 ## functionality
-The script searches the unread messages in the INBOX of one or meore mailboxes defined in an ini-file. In intervals according to defined criteria the script sends the messages found via MQTT.
+The script searches the unread messages in the INBOX of one or more mailboxes defined in an ini-file. In intervals according to defined criteria the script sends the messages found via MQTT.
 The script is intended for use in a Docker container, so that the Docker environment variables are used to control the mqtt-part, the part to control the mailboxes are defined in the ini-file also the defined filter.
+Additional you can "move" or "delete" message you found or send them to another mailaddress
+
+Since TAG 0.9 you can use wildcards ('\*' or '?') in the filter parameter 
 
 The docker image you can find [here](https://hub.docker.com/r/ukrae/mail2mqtt "mail2mqtt on docker").
 
@@ -49,7 +52,7 @@ smtpport:
 2: INFO_Paypal
 3: SENDTO
 ```
-* section to define the filters, here defined two filter see below
+* section to define the filters, here defined two filter see below. If you search only with part of the parameter you **must** use wildcards.
 ```
 [MissedCall]
 filter_postbox: Postbox_A
@@ -58,7 +61,7 @@ do_delete: True
 
 [INFO_Paypal]
 filter_postbox: Postbox_B
-filter_from: service@paypal.de|paypal@mail.paypal.de
+filter_from: *@paypal.de
 do_moveTo: INBOX.Archives
 
 [SENDTO]
@@ -75,6 +78,8 @@ do_moveTo: INBOX.Archives
 * do_moveTo: Folder to which the message will be moved (f.e. 'INBOX.Archives'). The folder must exist. 
 * do_sendTo: send the filtered message to the specified email-address
 * do_forward: switch, boolean (if True) to add an forward-message-part to the message (*default: True*)
+* do_seen: switch, boolean (if True) to set the message 'SEEN' after filtering (*default: True*) this parameter overrules the parameter in section 'General'
+* do_mqtt: switch, boolean (if True) to send the message to MQTT (*default: True*) 
 * it is allowed to combine *'do_sendTo'* with *'do_moveTo'* or *'do_delete'*
 
 ## output on your mqtt broker
