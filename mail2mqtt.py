@@ -126,9 +126,11 @@ def readIniValues():
 
 def checkIsPartOf(toCheck, pattern):
     res = False
-    if (toCheck != ''):
+    if (pattern != ''):
+        escToCheck = toCheck.replace('[', '').replace(']', '').replace(
+            '?', '').replace('*', '')
         for s in pattern.lower().split('|'):
-            if fnmatch.fnmatch(toCheck.lower(), s) == True:
+            if fnmatch.fnmatch(escToCheck.lower(), s) == True:
                 res = True
     else:
         res = True
