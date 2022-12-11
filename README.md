@@ -52,7 +52,7 @@ smtpport:
 2: INFO_Paypal
 3: SENDTO
 ```
-* section to define the filters, here defined two filter see below. If you search only with part of the parameter you **must** use wildcards.
+* section to define the filters, here defined two filter see below. If you search only with part of the parameter you **must** use wildcards. If there are one of the characters '*', '?', '\[' or '\]' in the filter-phrase it will be deleted during the search, because these character are wildcards.
 ```
 [MissedCall]
 filter_postbox: Postbox_A
