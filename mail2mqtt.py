@@ -338,8 +338,9 @@ def main():
                         response[1].decode('utf-8'))
 
                     # decode the email subject
-                    subject_list = decode_header(msg['subject'])
-                    subject = decodeElement(subject_list)
+                    if msg['subject'] != None:
+                        subject_list = decode_header(msg['subject'])
+                        subject = decodeElement(subject_list)
 
                     # decode email-From sender
                     from_list = decode_header(msg['from'])
